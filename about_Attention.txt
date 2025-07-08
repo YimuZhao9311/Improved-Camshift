@@ -1,0 +1,336 @@
+#step1
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+
+# 修复中文乱码
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+# 读取图像
+img_path = r''  # 替换成你的图像路径
+img = cv2.imread(img_path)
+if img is None:
+    print("图像加载失败")
+    exit()
+
+# 转HSV，筛选红色区域（两个区间合并）
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+lower_red1 = np.array([0, 50, 50])
+upper_red1 = np.array([10, 255, 255])
+lower_red2 = np.array([170, 50, 50])
+upper_red2 = np.array([180, 255, 255])
+mask_red1 = cv2.inRange(hsv, lower_red1, upper_red1)
+mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
+mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+
+# 反转掩码，得到非红色区域
+mask_not_red = cv2.bitwise_not(mask_red)
+
+# HSV(0,0,50)对应的BGR颜色
+fixed_hsv = np.uint8([[[0, 0, 50]]])
+fixed_bgr = cv2.cvtColor(fixed_hsv, cv2.COLOR_HSV2BGR)[0][0]
+
+# 初始化结果图，红色区域保持原图，非红色区域用固定灰色填充
+result = img.copy()
+result[mask_not_red == 255] = fixed_bgr
+
+# 生成只显示非红色区域的图（红色区域设为黑色）
+non_red_only = np.zeros_like(img)
+non_red_only[mask_not_red == 255] = img[mask_not_red == 255]
+
+
+# 保存结果图像
+cv2.imwrite('result.png', result)
+cv2.imwrite('non_red_only.png', non_red_only)
+
+print("已保存：result_non_red_fixed_gray.png 和 non_red_only.png")
+
+# 转为RGB用于matplotlib显示（OpenCV默认BGR）
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+non_red_only_rgb = cv2.cvtColor(non_red_only, cv2.COLOR_BGR2RGB)
+
+# 显示三张图
+plt.figure(figsize=(15, 5))
+
+plt.subplot(1, 3, 1)
+plt.title('原图')
+plt.imshow(img_rgb)
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.title('红色以外区域')
+plt.imshow(non_red_only_rgb)
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.title('最终结果（非红色灰色填充）')
+plt.imshow(result_rgb)
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+###step2
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import os
+
+# 修复中文乱码
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+# 读取图像
+img_path = r''  # 替换成你的图像路径
+img = cv2.imread(img_path)
+if img is None:
+    print("图像加载失败")
+    exit()
+
+# 转HSV，筛选红色区域（两个区间合并）
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+lower_red1 = np.array([0, 50, 50])
+upper_red1 = np.array([10, 255, 255])
+lower_red2 = np.array([170, 50, 50])
+upper_red2 = np.array([180, 255, 255])
+mask_red1 = cv2.inRange(hsv, lower_red1, upper_red1)
+mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
+mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+
+# 连通域分析，去除小于100像素的红色区域
+num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_red, connectivity=8)
+mask_red_filtered = np.zeros_like(mask_red)
+for i in range(1, num_labels):  # 0是背景，跳过
+    area = stats[i, cv2.CC_STAT_AREA]
+    if area >= 300:
+        mask_red_filtered[labels == i] = 255  # 保留大区域
+
+print(f"原始红色连通区域数：{num_labels-1}，过滤后保留区域数：{np.unique(labels[mask_red_filtered==255]).size - 1}")
+
+# 反转掩码，得到非红色区域（剔除小块后的）
+mask_not_red = cv2.bitwise_not(mask_red_filtered)
+
+# HSV(0,0,50)对应的BGR颜色，用于灰色填充
+fixed_hsv = np.uint8([[[0, 0, 50]]])
+fixed_bgr = cv2.cvtColor(fixed_hsv, cv2.COLOR_HSV2BGR)[0][0]
+
+# 初始化结果图，过滤后红色区域保持原图，非红色区域用固定灰色填充
+result = img.copy()
+result[mask_not_red == 255] = fixed_bgr
+
+# 生成只显示非红色区域的图（红色区域设为黑色）
+non_red_only = np.zeros_like(img)
+non_red_only[mask_not_red == 255] = img[mask_not_red == 255]
+
+# 保存结果图像到指定目录
+save_dir = r''
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+
+result_path = os.path.join(save_dir, 'result_filtered.png')
+non_red_only_path = os.path.join(save_dir, 'non_red_only_filtered.png')
+cv2.imwrite(result_path, result)
+cv2.imwrite(non_red_only_path, non_red_only)
+
+print(f"已保存：{result_path} 和 {non_red_only_path}")
+
+# 转为RGB用于matplotlib显示
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+non_red_only_rgb = cv2.cvtColor(non_red_only, cv2.COLOR_BGR2RGB)
+
+# 显示三张图
+plt.figure(figsize=(15, 5))
+
+plt.subplot(1, 3, 1)
+plt.title('原图')
+plt.imshow(img_rgb)
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.title('过滤小红色区域后非红色部分')
+plt.imshow(non_red_only_rgb)
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.title('最终结果（非红色灰色填充）')
+plt.imshow(result_rgb)
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+###step3
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import os
+
+# 修复中文乱码
+matplotlib.rcParams['font.sans-serif'] = ['SimHei']
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+# 读取图像
+img_path = r''  # 替换成你的图像路径
+img = cv2.imread(img_path)
+if img is None:
+    print("图像加载失败")
+    exit()
+
+# 转HSV，筛选红色区域（两个区间合并）
+hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+lower_red1 = np.array([0, 50, 50])
+upper_red1 = np.array([10, 255, 255])
+lower_red2 = np.array([170, 50, 50])
+upper_red2 = np.array([180, 255, 255])
+mask_red1 = cv2.inRange(hsv, lower_red1, upper_red1)
+mask_red2 = cv2.inRange(hsv, lower_red2, upper_red2)
+mask_red = cv2.bitwise_or(mask_red1, mask_red2)
+
+# 连通域分析，去除小于300像素的红色区域
+num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(mask_red, connectivity=8)
+mask_red_filtered = np.zeros_like(mask_red)
+for i in range(1, num_labels):  # 0是背景，跳过
+    area = stats[i, cv2.CC_STAT_AREA]
+    if area >= 300:
+        mask_red_filtered[labels == i] = 255  # 保留大区域
+
+print(f"原始红色连通区域数：{num_labels-1}，过滤后保留区域数：{np.unique(labels[mask_red_filtered==255]).size - 1}")
+
+# ======= 在这里对过滤后的红色掩膜做膨胀卷积 =======
+kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 7))  # 15x9椭圆形卷积核，可调整大小
+mask_red_dilated = cv2.dilate(mask_red_filtered, kernel, iterations=1)  # 膨胀一次，可调整iterations次数
+
+# 反转膨胀后的掩膜，得到非红色区域（包含膨胀后的扩展区域）
+mask_not_red = cv2.bitwise_not(mask_red_dilated)
+
+# HSV(0,0,50)对应的BGR颜色，用于灰色填充
+fixed_hsv = np.uint8([[[0, 0, 50]]])
+fixed_bgr = cv2.cvtColor(fixed_hsv, cv2.COLOR_HSV2BGR)[0][0]
+
+# 初始化结果图，过滤后膨胀红色区域保持原图，非红色区域用固定灰色填充
+result = img.copy()
+result[mask_not_red == 255] = fixed_bgr
+
+# 生成只显示非红色区域的图（红色区域设为黑色）
+non_red_only = np.zeros_like(img)
+non_red_only[mask_not_red == 255] = img[mask_not_red == 255]
+
+# 保存结果图像到指定目录
+save_dir = r''
+if not os.path.exists(save_dir):
+    os.makedirs(save_dir)
+
+result_path = os.path.join(save_dir, 'result_filtered_dilated.png')
+non_red_only_path = os.path.join(save_dir, 'non_red_only_filtered_dilated.png')
+cv2.imwrite(result_path, result)
+cv2.imwrite(non_red_only_path, non_red_only)
+
+print(f"已保存：{result_path} 和 {non_red_only_path}")
+
+# 转为RGB用于matplotlib显示
+img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+non_red_only_rgb = cv2.cvtColor(non_red_only, cv2.COLOR_BGR2RGB)
+
+# 显示三张图
+plt.figure(figsize=(15, 5))
+
+plt.subplot(1, 3, 1)
+plt.title('原图')
+plt.imshow(img_rgb)
+plt.axis('off')
+
+plt.subplot(1, 3, 2)
+plt.title('膨胀过滤后红色区域')
+plt.imshow(cv2.cvtColor(mask_red_dilated, cv2.COLOR_GRAY2RGB))
+plt.axis('off')
+
+plt.subplot(1, 3, 3)
+plt.title('最终结果（非红色灰色填充）')
+plt.imshow(result_rgb)
+plt.axis('off')
+
+plt.tight_layout()
+plt.show()
+
+
+##GStest
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib
+import os
+
+# 修复中文乱码 & 设置英文字体为 Arial（或你系统中常用的字体）
+matplotlib.rcParams['font.sans-serif'] = ['SimHei', 'Arial']  # 先用中文黑体，再用Arial显示英文字母
+matplotlib.rcParams['axes.unicode_minus'] = False
+
+def adaptive_gaussian_filter(image, ksize=5, alpha=1.0, epsilon=1e-5):
+    image = image.astype(np.float32)
+    mean = cv2.blur(image, (ksize, ksize))
+    sqr_mean = cv2.blur(image ** 2, (ksize, ksize))
+    std = np.sqrt(sqr_mean - mean ** 2)
+    adaptive_sigma = alpha / (std + epsilon)
+    filtered = np.zeros_like(image)
+    pad = ksize // 2
+    padded_img = cv2.copyMakeBorder(image, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+    for i in range(image.shape[0]):
+        for j in range(image.shape[1]):
+            sigma = max(0.1, adaptive_sigma[i, j])
+            roi = padded_img[i:i + ksize, j:j + ksize]
+            filtered[i, j] = cv2.GaussianBlur(roi, (ksize, ksize), sigma).mean()
+    return np.clip(filtered, 0, 255).astype(np.uint8)
+
+if __name__ == '__main__':
+    img_path = r''  # 替换成你的图像路径
+    img = cv2.imread(img_path)
+    if img is None:
+        print("图像加载失败")
+        exit()
+
+    # 分离通道
+    B, G, R = cv2.split(img)
+
+    # 对每个通道进行自适应高斯滤波
+    B_filtered = adaptive_gaussian_filter(B, ksize=5, alpha=0.5)
+    G_filtered = adaptive_gaussian_filter(G, ksize=5, alpha=0.5)
+    R_filtered = adaptive_gaussian_filter(R, ksize=5, alpha=0.5)
+
+    # 合并滤波后的通道
+    result = cv2.merge([B_filtered, G_filtered, R_filtered])
+
+    # 保存结果图像：指定文件夹，自动创建目录
+    save_dir = r''
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    save_path = os.path.join(save_dir, 'GSGSGS.jpg')
+    cv2.imwrite(save_path, result)
+    print(f'处理后的图像已保存至: {save_path}')
+
+    # 显示原图与滤波后图像
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    result_rgb = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+
+    plt.figure(figsize=(10, 5))
+    plt.subplot(1, 2, 1)
+    plt.title('Original image', fontsize=14, fontweight='bold')
+    plt.imshow(img_rgb)
+    plt.axis('off')
+
+    plt.subplot(1, 2, 2)
+    plt.title('Image after adaptive Gaussian filtering', fontsize=14, fontweight='bold')
+    plt.imshow(result_rgb)
+    plt.axis('off')
+
+    plt.tight_layout()
+    plt.show()
+
+
